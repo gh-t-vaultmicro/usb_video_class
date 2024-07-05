@@ -1,0 +1,9 @@
+/Users/vault/git/libuvc/build/CMakeFiles/uvc.dir
+/Users/vault/git/libuvc/build/CMakeFiles/uvc_static.dir
+/Users/vault/git/libuvc/build/CMakeFiles/example.dir
+/Users/vault/git/libuvc/build/CMakeFiles/edit_cache.dir
+/Users/vault/git/libuvc/build/CMakeFiles/rebuild_cache.dir
+/Users/vault/git/libuvc/build/CMakeFiles/list_install_components.dir
+/Users/vault/git/libuvc/build/CMakeFiles/install.dir
+/Users/vault/git/libuvc/build/CMakeFiles/install/local.dir
+/Users/vault/git/libuvc/build/CMakeFiles/install/strip.dir
