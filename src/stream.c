@@ -755,6 +755,7 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
     //   printf("invalid packet: reserved bit set \n");
     //   return;
     // }
+    // // wonder why this is not working
 
     if (strmh->bmbfh.bfh_err) {
       strmh->frame.error_code = PAYLOAD_ERROR_ERROR_BIT_SET;
@@ -767,6 +768,8 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
     //   printf("invalid packet: no eoh bit set \n");
     //   return;
     // }
+    // // wonder why this is not working
+
     
   // here is to end the frame
 
@@ -813,6 +816,8 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
     if (strmh->bmbfh.bfh_eof || strmh->got_bytes == strmh->cur_ctrl.dwMaxVideoFrameSize) {
       /* The EOF bit is set, so publish the complete frame */
       _uvc_swap_buffers(strmh);
+
+      // if the previous eof was there then the fid should be different
     }
   }
 }
