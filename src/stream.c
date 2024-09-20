@@ -701,93 +701,116 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
   uint8_t header_info;
   size_t data_len;
 
-  /* magic numbers for identifying header packets from some iSight cameras */
-  static uint8_t isight_tag[] = {
-    0x11, 0x22, 0x33, 0x44,
-    0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xfa, 0xce
-  };
+  uint8_t payload_error_check = 0;
 
   /* ignore empty payload transfers */
   if (payload_len == 0)
     return;
 
-  /* Certain iSight cameras have strange behavior: They send header
-   * information in a packet with no image data, and then the following
-   * packets have only image data, with no more headers until the next frame.
-   *
-   * The iSight header: len(1), flags(1 or 2), 0x11223344(4),
-   * 0xdeadbeefdeadface(8), ??(16)
-   */
 
-  if (strmh->devh->is_isight &&
-      (payload_len < 14 || memcmp(isight_tag, payload + 2, sizeof(isight_tag))) &&
-      (payload_len < 15 || memcmp(isight_tag, payload + 3, sizeof(isight_tag)))) {
-    /* The payload transfer doesn't have any iSight magic, so it's all image data */
-    header_len = 0;
-    data_len = payload_len;
-  } else {
-    header_len = payload[0];
+  // header length define
+  strmh->hle = payload[0];
 
-    if (header_len > payload_len) {
-      UVC_DEBUG("bogus packet: actual_len=%zd, header_len=%zd\n", payload_len, header_len);
-      return;
-    }
-
-    if (strmh->devh->is_isight)
-      data_len = 0;
-    else
-      data_len = payload_len - header_len;
+  if (strmh->hle > payload_len) {
+    printf("error packet: actual_len=%zu, header_len=%d\n", payload_len, strmh->hle);
+    return;
   }
 
-  if (header_len < 2) {
-    header_info = 0;
-  } else {
-    /** @todo we should be checking the end-of-header bit */
-    size_t variable_offset = 2;
+  data_len = payload_len - strmh->hle;
 
-    header_info = payload[1];
-
-    if (header_info & 0x40) {
-      UVC_DEBUG("bad packet: error bit set");
+  // valid hle
+  if (strmh->hle < 2) {
+    strmh->bfh = 0;
+    }else {
+    if (strmh->hle > 14){
+      strmh->frame.error_code = PAYLOAD_ERROR_BIG_HEADER_LENGTH;
+      printf("error packet: header length too long");
       return;
     }
 
-    if (strmh->fid != (header_info & 1) && strmh->got_bytes != 0) {
+    size_t variable_offset = 2;
+    strmh->bfh = payload[1];
+
+    //valid hle and pts, scr
+    if (strmh->bmbfh.bfh_pts && strmh->bmbfh.bfh_scr && strmh->hle != 0x0C) {
+      strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
+      printf("invalid packet: pts&&scr but header length is not 0x0C \n");
+      return;
+    } else if (!strmh->bmbfh.bfh_pts && !strmh->bmbfh.bfh_scr && strmh->hle != 0x02) {
+      strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
+      printf("invalid packet: no pts&&scr but header length is not 0x02 \n");
+      return;
+    } else if (strmh->bmbfh.bfh_pts && !strmh->bmbfh.bfh_scr && strmh->hle != 0x06) {
+      strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
+      printf("invalid packet: pts but header length is not 0x06 \n");
+      return;
+    } else if (!strmh->bmbfh.bfh_pts && strmh->bmbfh.bfh_scr && strmh->hle != 0x08) {
+      strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
+      printf("invalid packet: scr but header length is not 0x08 \n");
+      return;
+    }
+
+    // if (strmh->bmbfh.bfh_res){
+    //   strmh->frame.error_code = PAYLOAD_ERROR_RESERVED_BIT_SET;
+    //   printf("invalid packet: reserved bit set \n");
+    //   return;
+    // }
+
+    if (strmh->bmbfh.bfh_err) {
+      strmh->frame.error_code = PAYLOAD_ERROR_ERROR_BIT_SET;
+      printf("invalid packet: error bit set \n");
+      return;
+    }
+
+    // if (!strmh->bmbfh.bfh_eoh){
+    //   strmh->frame.error_code = PAYLOAD_ERROR_NO_ENDOFHEADER;
+    //   printf("invalid packet: no eoh bit set \n");
+    //   return;
+    // }
+    
+  // here is to end the frame
+
+
+    if (strmh->fid != (strmh->bfh & 1) && strmh->got_bytes != 0) {
       /* The frame ID bit was flipped, but we have image data sitting
-         around from prior transfers. This means the camera didn't send
-         an EOF for the last transfer of the previous frame. */
+          around from prior transfers. This means the camera didn't send
+          an EOF for the last transfer of the previous frame. */
+      printf("swapping packets: frame ID bit flipped, but we have image data sitting around from prior transfers\n");
       _uvc_swap_buffers(strmh);
     }
 
-    strmh->fid = header_info & 1;
+    strmh->fid = strmh->bfh & 1;
 
-    if (header_info & (1 << 2)) {
+    if (strmh->bmbfh.bfh_pts) {
       strmh->pts = DW_TO_INT(payload + variable_offset);
       variable_offset += 4;
     }
 
-    if (header_info & (1 << 3)) {
+    if (strmh->bmbfh.bfh_scr) {
       /** @todo read the SOF token counter */
       strmh->last_scr = DW_TO_INT(payload + variable_offset);
       variable_offset += 6;
     }
 
-    if (header_len > variable_offset) {
-        // Metadata is attached to header
-        size_t meta_len = header_len - variable_offset;
-        if (strmh->meta_got_bytes + meta_len > LIBUVC_XFER_META_BUF_SIZE)
-          meta_len = LIBUVC_XFER_META_BUF_SIZE - strmh->meta_got_bytes; /* Avoid overflow. */
-        memcpy(strmh->meta_outbuf + strmh->meta_got_bytes, payload + variable_offset, meta_len);
-        strmh->meta_got_bytes += meta_len;
-    }
+    // if (strmh->hle > variable_offset) {
+    //   /* Metadata is attached to header */
+    //   size_t meta_len = strmh->hle - variable_offset;
+    //   if (strmh->meta_got_bytes + meta_len > LIBUVC_XFER_META_BUF_SIZE)
+    //     meta_len = LIBUVC_XFER_META_BUF_SIZE - strmh->meta_got_bytes; /* Avoid overflow. */
+    //   memcpy(strmh->meta_outbuf + strmh->meta_got_bytes, payload + variable_offset, meta_len);
+    //   strmh->meta_got_bytes += meta_len;
+    // }
   }
-
+/////////////////////////  here is to process the data
   if (data_len > 0) {
-    if (strmh->got_bytes + data_len > strmh->cur_ctrl.dwMaxVideoFrameSize)
+    if (strmh->got_bytes + data_len > strmh->cur_ctrl.dwMaxVideoFrameSize){
       data_len = strmh->cur_ctrl.dwMaxVideoFrameSize - strmh->got_bytes; /* Avoid overflow. */
-    memcpy(strmh->outbuf + strmh->got_bytes, payload + header_len, data_len);
+      strmh->frame.error_code = PAYLOAD_ERROR_OVERFLOW;
+      printf("overflow: data_len = %zu\n", data_len);
+    }
+    memcpy(strmh->outbuf + strmh->got_bytes, payload + strmh->hle, data_len);
     strmh->got_bytes += data_len;
-    if (header_info & (1 << 1) || strmh->got_bytes == strmh->cur_ctrl.dwMaxVideoFrameSize) {
+    if (strmh->bmbfh.bfh_eof || strmh->got_bytes == strmh->cur_ctrl.dwMaxVideoFrameSize) {
       /* The EOF bit is set, so publish the complete frame */
       _uvc_swap_buffers(strmh);
     }
@@ -830,7 +853,6 @@ void LIBUSB_CALL _uvc_stream_callback(struct libusb_transfer *transfer) {
         pktbuf = libusb_get_iso_packet_buffer_simple(transfer, packet_id);
 
         _uvc_process_payload(strmh, pktbuf, pkt->actual_length);
-
       }
     }
     break;
@@ -1093,7 +1115,7 @@ uvc_error_t uvc_stream_start(
 
   ctrl = &strmh->cur_ctrl;
 
-  UVC_ENTER();
+  UVC_ENTER(); 
 
   if (strmh->running) {
     UVC_EXIT(UVC_ERROR_BUSY);

@@ -245,10 +245,40 @@ struct uvc_stream_handle {
 
   /* listeners may only access hold*, and only when holding a
    * lock on cb_mutex (probably signaled with cb_cond) */
+  uint8_t hle;
+  union{
+    uint8_t bfh;
+    struct __attribute__((packed, aligned(1))){
+      uint8_t bfh_fid : 1;
+      uint8_t bfh_eof : 1;
+      uint8_t bfh_pts : 1;
+      uint8_t bfh_scr : 1;
+      uint8_t bfh_res : 1;
+      uint8_t bfh_sti : 1;
+      uint8_t bfh_err : 1;
+      uint8_t bfh_eoh : 1;
+    } bmbfh;
+  };
   uint8_t fid;
   uint32_t seq, hold_seq;
   uint32_t pts, hold_pts;
-  uint32_t last_scr, hold_last_scr;
+  union {
+    uint64_t last_scr;
+    struct __attribute__((packed, aligned(1))){
+      uint32_t scr_stc : 32;
+      uint16_t scr_tok : 11;
+      uint16_t scr_res :  5;
+    } bmscr;
+  };
+  union{
+    uint32_t hold_last_scr;
+    struct __attribute__((packed, aligned(1))){
+      uint32_t last_scr_stc : 32;
+      uint16_t last_scr_tok : 11;
+      uint16_t last_scr_res :  5;
+    } bmlast_scr;
+  };
+  // uint32_t last_scr, hold_last_scr;
   size_t got_bytes, hold_bytes;
   uint8_t *outbuf, *holdbuf;
   pthread_mutex_t cb_mutex;

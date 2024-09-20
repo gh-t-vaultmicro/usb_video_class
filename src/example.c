@@ -3,6 +3,111 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#include <string.h>
+#include <jpeglib.h>
+
+void bgr_to_rgb(uint8_t *data, int width, int height) {
+  for (int i = 0; i < width * height * 3; i += 3) {
+    uint8_t temp = data[i];      // Blue
+    data[i] = data[i + 2];       // Red
+    data[i + 2] = temp;          // Blue
+  }
+}
+
+/* Helper function to save BGR data as a JPEG file */
+void save_bgr_to_jpeg(uint8_t *bgr_data, int width, int height, const char *filename) {
+  struct jpeg_compress_struct cinfo;
+  struct jpeg_error_mgr jerr;
+
+  FILE *outfile;  /* target file */
+  JSAMPROW row_pointer[1];  /* pointer to a single row */
+  int row_stride;  /* physical row width in BGR buffer */
+
+  /* Step 1: Allocate and initialize JPEG compression object */
+  cinfo.err = jpeg_std_error(&jerr);
+  jpeg_create_compress(&cinfo);
+
+  /* Step 2: Specify the destination for the compressed data */
+  if ((outfile = fopen(filename, "wb")) == NULL) {
+    fprintf(stderr, "can't open %s\n", filename);
+    return;
+  }
+  jpeg_stdio_dest(&cinfo, outfile);
+
+  /* Step 3: Set parameters for compression */
+  cinfo.image_width = width;      /* image width and height, in pixels */
+  cinfo.image_height = height;
+  cinfo.input_components = 3;     /* # of color components per pixel */
+  cinfo.in_color_space = JCS_RGB; /* colorspace of input image */
+
+  jpeg_set_defaults(&cinfo);
+  jpeg_set_quality(&cinfo, 85, TRUE); /* set the quality [0..100] */
+
+  /* Step 4: Start compressor */
+  jpeg_start_compress(&cinfo, TRUE);
+
+  /* Step 5: while (scan lines remain to be written) */
+  row_stride = width * 3; /* JSAMPLEs per row in image_buffer */
+  while (cinfo.next_scanline < cinfo.image_height) {
+    row_pointer[0] = &bgr_data[cinfo.next_scanline * row_stride];
+    jpeg_write_scanlines(&cinfo, row_pointer, 1);
+  }
+
+  /* Step 6: Finish compression */
+  jpeg_finish_compress(&cinfo);
+
+  /* Step 7: Release JPEG compression object */
+  fclose(outfile);
+  jpeg_destroy_compress(&cinfo);
+}
+
+
+/* Helper function to save RGB data as a JPEG file */
+void save_rgb_to_jpeg(uint8_t *rgb_data, int width, int height, const char *filename) {
+  struct jpeg_compress_struct cinfo;
+  struct jpeg_error_mgr jerr;
+
+  FILE *outfile;  /* target file */
+  JSAMPROW row_pointer[1];  /* pointer to a single row */
+  int row_stride;  /* physical row width in RGB buffer */
+
+  /* Step 1: Allocate and initialize JPEG compression object */
+  cinfo.err = jpeg_std_error(&jerr);
+  jpeg_create_compress(&cinfo);
+
+  /* Step 2: Specify the destination for the compressed data */
+  if ((outfile = fopen(filename, "wb")) == NULL) {
+    fprintf(stderr, "can't open %s\n", filename);
+    return;
+  }
+  jpeg_stdio_dest(&cinfo, outfile);
+
+  /* Step 3: Set parameters for compression */
+  cinfo.image_width = width;      /* image width and height, in pixels */
+  cinfo.image_height = height;
+  cinfo.input_components = 3;     /* # of color components per pixel */
+  cinfo.in_color_space = JCS_RGB; /* colorspace of input image */
+
+  jpeg_set_defaults(&cinfo);
+  jpeg_set_quality(&cinfo, 85, TRUE); /* set the quality [0..100] */
+
+  /* Step 4: Start compressor */
+  jpeg_start_compress(&cinfo, TRUE);
+
+  /* Step 5: while (scan lines remain to be written) */
+  row_stride = width * 3; /* JSAMPLEs per row in image_buffer */
+  while (cinfo.next_scanline < cinfo.image_height) {
+    row_pointer[0] = &rgb_data[cinfo.next_scanline * row_stride];
+    jpeg_write_scanlines(&cinfo, row_pointer, 1);
+  }
+
+  /* Step 6: Finish compression */
+  jpeg_finish_compress(&cinfo);
+
+  /* Step 7: Release JPEG compression object */
+  fclose(outfile);
+  jpeg_destroy_compress(&cinfo);
+}
 
 /* This callback function runs once per frame. Use it to perform any
  * quick processing you need, or have it put the frame into your application's
@@ -16,12 +121,14 @@ void cb(uvc_frame_t *frame, void *ptr) {
     gettimeofday(&start_time, NULL);
   }
 
+  static int jpeg_count = 0;  // JPEG count
 
   /* FILE *fp;
    * static int jpeg_count = 0;
    * static const char *H264_FILE = "iOSDevLog.h264";
    * static const char *MJPEG_FILE = ".jpeg";
    * char filename[16]; */
+
 
   /* We'll convert the image from YUV/JPEG to BGR, so allocate space */
   bgr = uvc_allocate_frame(frame->width * frame->height * 3);
@@ -48,16 +155,30 @@ void cb(uvc_frame_t *frame, void *ptr) {
     break;
   case UVC_COLOR_FORMAT_YUYV:
     /* Do the BGR conversion */
+
     ret = uvc_any2bgr(frame, bgr);
     if (ret) {
       uvc_perror(ret, "uvc_any2bgr");
       uvc_free_frame(bgr);
       return;
     }
+
+    bgr_to_rgb(bgr->data, bgr->width, bgr->height);
     break;
   default:
     break;
   }
+
+  {
+    char filename[64];
+    snprintf(filename, sizeof(filename), "frame_%d.jpeg", jpeg_count++);
+    save_bgr_to_jpeg(bgr->data, bgr->width, bgr->height, filename);
+    printf("Saved frame to %s\n", filename);
+  }
+
+  // printf("frame error code : %d \n", frame->error_code);
+  // // printf("packet time stamp : %d", frame->packet_timestamp);
+  // frame->error_code = 0;
 
   if (frame->sequence % 30 == 0) {
     printf(" * got image %u\n",  frame->sequence);
@@ -70,37 +191,6 @@ void cb(uvc_frame_t *frame, void *ptr) {
     printf(" * elapsed time: %ld ms\n", elapsed_ms);
 
   }
-
-  
-
-  /* Call a user function:
-   *
-   * my_type *my_obj = (*my_type) ptr;
-   * my_user_function(ptr, bgr);
-   * my_other_function(ptr, bgr->data, bgr->width, bgr->height);
-   */
-
-  /* Call a C++ method:
-   *
-   * my_type *my_obj = (*my_type) ptr;
-   * my_obj->my_func(bgr);
-   */
-
-  /* Use opencv.highgui to display the image:
-   * 
-   * cvImg = cvCreateImageHeader(
-   *     cvSize(bgr->width, bgr->height),
-   *     IPL_DEPTH_8U,
-   *     3);
-   *
-   * cvSetData(cvImg, bgr->data, bgr->width * 3); 
-   *
-   * cvNamedWindow("Test", CV_WINDOW_AUTOSIZE);
-   * cvShowImage("Test", cvImg);
-   * cvWaitKey(10);
-   *
-   * cvReleaseImageHeader(&cvImg);
-   */
 
   uvc_free_frame(bgr);
 }
@@ -217,7 +307,7 @@ int main(int argc, char **argv) {
             uvc_perror(res, " ... uvc_set_ae_mode failed to enable auto exposure mode");
           }
 
-          sleep(10); /* stream for 10 seconds */
+          sleep(3); /* stream for 10 seconds */
 
           /* End the stream. Blocks until last callback is serviced */
           uvc_stop_streaming(devh);

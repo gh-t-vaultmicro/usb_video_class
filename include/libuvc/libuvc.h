@@ -53,6 +53,19 @@ typedef enum uvc_error {
   UVC_ERROR_OTHER = -99
 } uvc_error_t;
 
+typedef enum payload_error{
+  PAYLOAD_ERROR_NONE = 0,
+  PAYLOAD_ERROR_SMALL_HEADER_LENGTH = -1,
+  PAYLOAD_ERROR_BIG_HEADER_LENGTH = -2,
+  PAYLOAD_ERROR_INVALID_HEADER_LENGTH = -3,
+  PAYLOAD_ERROR_RESERVED_BIT_SET = -4,
+  PAYLOAD_ERROR_ERROR_BIT_SET = -5,
+  PAYLOAD_ERROR_WRONG_END_OF_PACKET = -6,
+  PAYLOAD_ERROR_OVERFLOW = -7,
+  PAYLOAD_ERROR_NO_ENDOFHEADER = -8,
+  PAYLOAD_ERROR_UNKNOWN = -99
+} payload_error_t;
+
 /** Color coding of stream, transport-independent
  * @ingroup streaming
  */
@@ -449,6 +462,12 @@ typedef struct uvc_device_descriptor {
   const char *product;
 } uvc_device_descriptor_t;
 
+typedef struct uvc_packet_time_stamp{
+  uint64_t scr_list;
+  size_t scr_count;
+  size_t scr_max_size;
+} uvc_packet_time_stamp_t;
+
 /** An image frame received from the UVC device
  * @ingroup streaming
  */
@@ -485,6 +504,16 @@ typedef struct uvc_frame {
   void *metadata;
   /** Size of metadata buffer */
   size_t metadata_bytes;
+
+  //Error type
+  payload_error_t error_code;
+  // Size of the frame
+
+  // Packet count
+
+  // Timestamp
+  uvc_packet_time_stamp_t *time_stamp;
+  
 } uvc_frame_t;
 
 /** A callback function to handle incoming assembled UVC frames

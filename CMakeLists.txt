@@ -120,7 +120,8 @@ foreach(target_name IN LISTS UVC_TARGETS)
   )
   if(JPEG_FOUND)
     target_link_libraries(${target_name}
-      PRIVATE JPEG::JPEG
+      # PRIVATE JPEG::JPEG
+      PRIVATE -ljpeg
     )
   endif()
   set_target_properties(${target_name} PROPERTIES
@@ -150,6 +151,7 @@ if(BUILD_EXAMPLE)
     PRIVATE
       LibUVC::UVC
       Threads::Threads
+      -ljpeg
   )
 endif()
 
