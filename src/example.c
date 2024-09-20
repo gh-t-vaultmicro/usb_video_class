@@ -1,6 +1,8 @@
 #include "libuvc/libuvc.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/time.h>
+
 
 /* This callback function runs once per frame. Use it to perform any
  * quick processing you need, or have it put the frame into your application's
@@ -8,7 +10,13 @@
 void cb(uvc_frame_t *frame, void *ptr) {
   uvc_frame_t *bgr;
   uvc_error_t ret;
-  enum uvc_frame_format *frame_format = (enum uvc_frame_format *)ptr;
+
+  static struct timeval start_time;
+  if (start_time.tv_sec == 0 && start_time.tv_usec == 0) {
+    gettimeofday(&start_time, NULL);
+  }
+
+
   /* FILE *fp;
    * static int jpeg_count = 0;
    * static const char *H264_FILE = "iOSDevLog.h264";
@@ -53,7 +61,17 @@ void cb(uvc_frame_t *frame, void *ptr) {
 
   if (frame->sequence % 30 == 0) {
     printf(" * got image %u\n",  frame->sequence);
+    // Calculate and display the elapsed time in milliseconds
+    struct timeval curr_time;
+    gettimeofday(&curr_time, NULL);
+    long elapsed_ms = (curr_time.tv_sec - start_time.tv_sec) * 1000;
+    elapsed_ms += (curr_time.tv_usec - start_time.tv_usec) / 1000;
+
+    printf(" * elapsed time: %ld ms\n", elapsed_ms);
+
   }
+
+  
 
   /* Call a user function:
    *
@@ -130,7 +148,7 @@ int main(int argc, char **argv) {
 
       const uvc_format_desc_t *format_desc = uvc_get_format_descs(devh);
       const uvc_frame_desc_t *frame_desc = format_desc->frame_descs;
-      enum uvc_frame_format frame_format;
+      enum uvc_frame_format frame_format = UVC_FRAME_FORMAT_YUYV;
       int width = 640;
       int height = 480;
       int fps = 30;
@@ -147,11 +165,11 @@ int main(int argc, char **argv) {
         break;
       }
 
-      if (frame_desc) {
-        width = frame_desc->wWidth;
-        height = frame_desc->wHeight;
-        fps = 10000000 / frame_desc->dwDefaultFrameInterval;
-      }
+      // if (frame_desc) {
+      //   width = frame_desc->wWidth;
+      //   height = frame_desc->wHeight;
+      //   fps = 10000000 / frame_desc->dwDefaultFrameInterval;
+      // }
 
       printf("\nFirst format: (%4s) %dx%d %dfps\n", format_desc->fourccFormat, width, height, fps);
 

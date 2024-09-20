@@ -1325,7 +1325,7 @@ void *_uvc_user_caller(void *arg) {
  * @brief Populate the fields of a frame to be handed to user code
  * must be called with stream cb lock held!
  */
-void _uvc_populate_frame(uvc_stream_handle_t *strmh) {
+void _uvc_populate_frame(uvc_stream_handle_t *strmh) { 
   uvc_frame_t *frame = &strmh->frame;
   uvc_frame_desc_t *frame_desc;
 
