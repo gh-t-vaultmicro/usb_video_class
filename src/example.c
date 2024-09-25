@@ -109,6 +109,80 @@ void save_rgb_to_jpeg(uint8_t *rgb_data, int width, int height, const char *file
   jpeg_destroy_compress(&cinfo);
 }
 
+const char* get_frame_format_string(enum uvc_frame_format format) {
+    switch (format) {
+        case UVC_FRAME_FORMAT_UNKNOWN:
+            return "UNKNOWN";
+        case UVC_FRAME_FORMAT_UNCOMPRESSED:
+            return "UNCOMPRESSED";
+        case UVC_FRAME_FORMAT_COMPRESSED:
+            return "COMPRESSED";
+        case UVC_FRAME_FORMAT_YUYV:
+            return "YUYV";
+        case UVC_FRAME_FORMAT_UYVY:
+            return "UYVY";
+        case UVC_FRAME_FORMAT_RGB:
+            return "RGB";
+        case UVC_FRAME_FORMAT_BGR:
+            return "BGR";
+        case UVC_FRAME_FORMAT_MJPEG:
+            return "MJPEG";
+        case UVC_FRAME_FORMAT_H264:
+            return "H264";
+        case UVC_FRAME_FORMAT_GRAY8:
+            return "GRAY8";
+        case UVC_FRAME_FORMAT_GRAY16:
+            return "GRAY16";
+        case UVC_FRAME_FORMAT_BY8:
+            return "BY8";
+        case UVC_FRAME_FORMAT_BA81:
+            return "BA81";
+        case UVC_FRAME_FORMAT_SGRBG8:
+            return "SGRBG8";
+        case UVC_FRAME_FORMAT_SGBRG8:
+            return "SGBRG8";
+        case UVC_FRAME_FORMAT_SRGGB8:
+            return "SRGGB8";
+        case UVC_FRAME_FORMAT_SBGGR8:
+            return "SBGGR8";
+        case UVC_FRAME_FORMAT_NV12:
+            return "NV12";
+        case UVC_FRAME_FORMAT_P010:
+            return "P010";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+const char* get_payload_error_string(payload_error_t error_code) {
+    switch (error_code) {
+        case PAYLOAD_ERROR_NONE:
+            return "NONE";
+        case PAYLOAD_ERROR_SMALL_HEADER_LENGTH:
+            return "SMALL_HEADER_LENGTH";
+        case PAYLOAD_ERROR_BIG_HEADER_LENGTH:
+            return "BIG_HEADER_LENGTH";
+        case PAYLOAD_ERROR_INVALID_HEADER_LENGTH:
+            return "INVALID_HEADER_LENGTH";
+        case PAYLOAD_ERROR_RESERVED_BIT_SET:
+            return "RESERVED_BIT_SET";
+        case PAYLOAD_ERROR_ERROR_BIT_SET:
+            return "ERROR_BIT_SET";
+        case PAYLOAD_ERROR_WRONG_END_OF_PACKET:
+            return "WRONG_END_OF_PACKET";
+        case PAYLOAD_ERROR_OVERFLOW:
+            return "OVERFLOW";
+        case PAYLOAD_ERROR_NO_ENDOFHEADER:
+            return "NO_ENDOFHEADER";
+        case PAYLOAD_ERROR_FRAME_ID_FLIPPED:
+            return "FRAME_ID_FLIPPED";
+        case PAYLOAD_ERROR_UNKNOWN:
+            return "UNKNOWN";
+        default:
+            return "INVALID_ERROR_CODE";
+    }
+}
+
 /* This callback function runs once per frame. Use it to perform any
  * quick processing you need, or have it put the frame into your application's
  * input queue. If this function takes too long, you'll start losing frames. */
@@ -137,44 +211,72 @@ void cb(uvc_frame_t *frame, void *ptr) {
     return;
   }
 
-  printf("callback! frame_format = %d, width = %d, height = %d, length = %lu, ptr = %p\n",
-    frame->frame_format, frame->width, frame->height, frame->data_bytes, ptr);
+  if (frame->error_code != PAYLOAD_ERROR_NONE){
+    printf("cb: frame_format = %s, %d x %d, length = %lu, count = %d, frame_error = %s", //ptr = %p
+      get_frame_format_string(frame->frame_format), 
+      frame->width, frame->height, frame->data_bytes, 
+      frame->sequence, 
+      get_payload_error_string(frame->error_code));
+      //, ptr
 
-  switch (frame->frame_format) {
-  case UVC_FRAME_FORMAT_H264:
-    /* use `ffplay H264_FILE` to play */
-    /* fp = fopen(H264_FILE, "a");
-     * fwrite(frame->data, 1, frame->data_bytes, fp);
-     * fclose(fp); */
-    break;
-  case UVC_COLOR_FORMAT_MJPEG:
-    /* sprintf(filename, "%d%s", jpeg_count++, MJPEG_FILE);
-     * fp = fopen(filename, "w");
-     * fwrite(frame->data, 1, frame->data_bytes, fp);
-     * fclose(fp); */
-    break;
-  case UVC_COLOR_FORMAT_YUYV:
-    /* Do the BGR conversion */
+    switch (frame->frame_format) {
+    case UVC_FRAME_FORMAT_H264:
+      /* use `ffplay H264_FILE` to play */
+      /* fp = fopen(H264_FILE, "a");
+      * fwrite(frame->data, 1, frame->data_bytes, fp);
+      * fclose(fp); */
+      break;
+    case UVC_COLOR_FORMAT_MJPEG:
+      // sprintf(filename, "%d%s", jpeg_count++, MJPEG_FILE);
+      // fp = fopen(filename, "w");
+      // fwrite(frame->data, 1, frame->data_bytes, fp);
+      // fclose(fp);
+      // break;
+    case UVC_COLOR_FORMAT_YUYV:
+      /* Do the BGR conversion */
 
-    ret = uvc_any2bgr(frame, bgr);
-    if (ret) {
-      uvc_perror(ret, "uvc_any2bgr");
-      uvc_free_frame(bgr);
-      return;
-    }
+      ret = uvc_any2bgr(frame, bgr);
+      if (ret) {
+        uvc_perror(ret, "uvc_any2bgr");
+        uvc_free_frame(bgr);
+        return;
+      }
 
-    bgr_to_rgb(bgr->data, bgr->width, bgr->height);
-    break;
-  default:
-    break;
+      bgr_to_rgb(bgr->data, bgr->width, bgr->height);
+      break;
+    default:
+      break;
+    } 
   }
 
   {
-    char filename[64];
-    snprintf(filename, sizeof(filename), "frame_%d.jpeg", jpeg_count++);
-    save_bgr_to_jpeg(bgr->data, bgr->width, bgr->height, filename);
-    printf("Saved frame to %s\n", filename);
+    if (frame->error_code != PAYLOAD_ERROR_NONE) {
+        char filename[64];
+
+        // MJPEG 형식일 때 처리
+        if (frame->frame_format == UVC_COLOR_FORMAT_MJPEG) {
+            snprintf(filename, sizeof(filename), "frame_%d.jpeg", jpeg_count);
+            FILE *fp = fopen(filename, "w");
+            if (fp) {
+                fwrite(frame->data, 1, frame->data_bytes, fp);  // MJPEG 데이터를 바로 저장
+                fclose(fp);
+                printf("MJPEG frame saved as: %s\n", filename);
+            } else {
+                printf("Error opening file: %s\n", filename);
+            }
+        }
+        // YUYV 형식일 때 처리
+        else if (frame->frame_format == UVC_COLOR_FORMAT_YUYV) {
+            snprintf(filename, sizeof(filename), "frame_%d.jpeg", jpeg_count);
+            save_bgr_to_jpeg(bgr->data, bgr->width, bgr->height, filename);  // YUYV 변환 후 저장
+            printf("YUYV frame saved as: %s\n", filename);
+        }
+
+        jpeg_count++;
+    }
   }
+
+  printf("\n");
 
   // printf("frame error code : %d \n", frame->error_code);
   // // printf("packet time stamp : %d", frame->packet_timestamp);
@@ -191,6 +293,7 @@ void cb(uvc_frame_t *frame, void *ptr) {
     printf(" * elapsed time: %ld ms\n", elapsed_ms);
 
   }
+  frame->error_code = PAYLOAD_ERROR_NONE;
 
   uvc_free_frame(bgr);
 }
@@ -238,9 +341,9 @@ int main(int argc, char **argv) {
 
       const uvc_format_desc_t *format_desc = uvc_get_format_descs(devh);
       const uvc_frame_desc_t *frame_desc = format_desc->frame_descs;
-      enum uvc_frame_format frame_format = UVC_FRAME_FORMAT_YUYV;
-      int width = 640;
-      int height = 480;
+      enum uvc_frame_format frame_format = UVC_VS_FORMAT_MJPEG;
+      int width = 1280;
+      int height = 720;
       int fps = 30;
 
       switch (format_desc->bDescriptorSubtype) {
@@ -270,8 +373,8 @@ int main(int argc, char **argv) {
           width, height, fps /* width, height, fps */
       );
 
-      /* Print out the result */
-      uvc_print_stream_ctrl(&ctrl, stderr);
+      // /* Print out the result */
+      // uvc_print_stream_ctrl(&ctrl, stderr);
 
       if (res < 0) {
         uvc_perror(res, "get_mode"); /* device doesn't provide a matching stream */
@@ -307,7 +410,7 @@ int main(int argc, char **argv) {
             uvc_perror(res, " ... uvc_set_ae_mode failed to enable auto exposure mode");
           }
 
-          sleep(3); /* stream for 10 seconds */
+          sleep(10); /* stream for 10 seconds */
 
           /* End the stream. Blocks until last callback is serviced */
           uvc_stop_streaming(devh);

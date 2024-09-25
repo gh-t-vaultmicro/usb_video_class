@@ -189,13 +189,78 @@ uvc_error_t uvc_yuyv2rgb(uvc_frame_t *in, uvc_frame_t *out) {
  *
  * @param in YUYV frame
  * @param out BGR frame
- */
+  */
+// uvc_error_t uvc_yuyv2bgr(uvc_frame_t *in, uvc_frame_t *out) {
+//   if (in->frame_format != UVC_FRAME_FORMAT_YUYV)
+//     return UVC_ERROR_INVALID_PARAM;
+
+//   if (uvc_ensure_frame_size(out, in->width * in->height * 3) < 0)
+//     return UVC_ERROR_NO_MEM;
+
+//   // size_t expected_in_size = in->width * in->height * 2; // YUYV 형식은 픽셀당 2바이트 사용
+//   // if (in->data_bytes < expected_in_size){
+//   //   printf("Error: The size of the input frame is smaller than expected\n");
+//   //   return UVC_ERROR_NO_MEM;
+//   // }
+
+
+//   out->width = in->width;
+//   out->height = in->height;
+//   out->frame_format = UVC_FRAME_FORMAT_BGR;
+//   out->step = in->width * 3;
+//   out->sequence = in->sequence;
+//   out->capture_time = in->capture_time;
+//   out->capture_time_finished = in->capture_time_finished;
+//   out->source = in->source;
+
+//   uint8_t *pyuv = in->data;
+//   uint8_t *pbgr = out->data;
+//   uint8_t *pbgr_end = pbgr + out->data_bytes;
+
+//   size_t total_pixels = in->width * in->height;
+//   size_t num_blocks = total_pixels / 8;
+//   size_t remaining_pixels = total_pixels % 8;
+
+//   // // 처리할 픽셀 수가 8의 배수가 아닐 경우 오류 반환
+//   // if (remaining_pixels != 0){
+//   //   printf("Error: The number of pixels is not a multiple of 8\n");
+//   //   return UVC_ERROR_NO_MEM;
+//   // }
+
+//   while (pbgr < pbgr_end) {
+//     IYUYV2BGR_8(pyuv, pbgr);
+
+//     pbgr += 3 * 8;
+//     pyuv += 2 * 8;
+//   }
+
+//   return UVC_SUCCESS;
+// }
+
 uvc_error_t uvc_yuyv2bgr(uvc_frame_t *in, uvc_frame_t *out) {
   if (in->frame_format != UVC_FRAME_FORMAT_YUYV)
     return UVC_ERROR_INVALID_PARAM;
 
-  if (uvc_ensure_frame_size(out, in->width * in->height * 3) < 0)
+  size_t expected_out_size = in->width * in->height * 3;
+  if (uvc_ensure_frame_size(out, expected_out_size) < 0)
     return UVC_ERROR_NO_MEM;
+
+  // size_t expected_in_size = in->width * in->height * 2; // YUYV 형식은 픽셀당 2바이트 사용
+
+  // // 입력 데이터가 예상 크기보다 작을 경우, 부족한 부분을 0으로 채운 버퍼 생성
+  // uint8_t *pyuv_full;
+  // if (in->data_bytes < expected_in_size) {
+  //   // 새로운 버퍼 할당
+  //   pyuv_full = (uint8_t *)malloc(expected_in_size);
+  //   if (!pyuv_full)
+  //     return UVC_ERROR_NO_MEM;
+
+  //   // 기존 데이터를 복사하고 나머지 부분을 0으로 채움
+  //   memcpy(pyuv_full, in->data, in->data_bytes);
+  //   memset(pyuv_full + in->data_bytes, 0, expected_in_size - in->data_bytes);
+  // } else {
+  //   pyuv_full = in->data;
+  // }
 
   out->width = in->width;
   out->height = in->height;
@@ -210,15 +275,33 @@ uvc_error_t uvc_yuyv2bgr(uvc_frame_t *in, uvc_frame_t *out) {
   uint8_t *pbgr = out->data;
   uint8_t *pbgr_end = pbgr + out->data_bytes;
 
-  while (pbgr < pbgr_end) {
-    IYUYV2BGR_8(pyuv, pbgr);
+  size_t total_pixels = in->width * in->height;
+  size_t num_blocks = total_pixels / 8;
+  size_t remaining_pixels = total_pixels % 8;
 
-    pbgr += 3 * 8;
-    pyuv += 2 * 8;
-  }
+  // // 메인 루프: 8픽셀씩 처리
+  // for (size_t i = 0; i < num_blocks; ++i) {
+  //   IYUYV2BGR_8(pyuv, pbgr);
+  //   pbgr += 3 * 8;
+  //   pyuv += 2 * 8;
+  // }
+
+  // // 남은 픽셀이 있을 경우 처리
+  // if (remaining_pixels > 0) {
+  //   // 남은 픽셀 수만큼 처리하는 함수 사용
+  //   IYUYV2BGR(pyuv, pbgr, remaining_pixels);
+  //   pbgr += 3 * remaining_pixels;
+  //   pyuv += 2 * remaining_pixels;
+  // }
+
+  // // 추가로 할당한 버퍼가 있으면 해제
+  // if (in->data_bytes < expected_in_size) {
+  //   free(pyuv_full);
+  // }
 
   return UVC_SUCCESS;
 }
+
 
 #define IYUYV2Y(pyuv, py) { \
     (py)[0] = (pyuv[0]); \

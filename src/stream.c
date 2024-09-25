@@ -684,7 +684,32 @@ void _uvc_swap_buffers(uvc_stream_handle_t *strmh) {
   strmh->meta_got_bytes = 0;
   strmh->last_scr = 0;
   strmh->pts = 0;
+  // strmh->frame.error_code = 0;
 }
+
+
+
+void save_payload_to_file(const uint8_t *payload, size_t header_len, const char* error_msg) {
+    FILE *file = fopen("payloads.txt", "a");
+    if (file == NULL) {
+        printf("Failed to open payloads.txt for writing.\n");
+        return;
+    }
+
+    // If there is an error message, log it
+    if (error_msg != NULL) {
+        fprintf(file, "Error: %s \n", error_msg);
+    }
+    // Write payload as a hexadecimal string
+    for (size_t i = 0; i < header_len; i++) {
+        fprintf(file, "%02X", payload[i]);
+    }
+
+    // Separate payloads with two newlines for readability
+    fprintf(file, "\n\n");
+    fclose(file);
+}
+
 
 /** @internal
  * @brief Process a payload transfer
@@ -697,6 +722,7 @@ void _uvc_swap_buffers(uvc_stream_handle_t *strmh) {
  * @param payload_len Length of the payload transfer
  */
 void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t payload_len) {
+
   size_t header_len;
   uint8_t header_info;
   size_t data_len;
@@ -731,58 +757,79 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
     size_t variable_offset = 2;
     strmh->bfh = payload[1];
 
+    // /////////////////////////  Save payload to txt file, all packets
+    // FILE *file = fopen("payloads.txt", "a");
+    // if (file == NULL) {
+    //     printf("Failed to open payloads.txt for writing.\n");
+    //     return;
+    // }
+    // // Write payload as hexadecimal string
+    // for (size_t i = 0; i < strmh->hle; i++) {
+    //     fprintf(file, "%02X", payload[i]);
+    // }
+    // // Separate payloads with two newlines
+    // fprintf(file, "\n\n");
+    // fclose(file);
+
     //valid hle and pts, scr
     if (strmh->bmbfh.bfh_pts && strmh->bmbfh.bfh_scr && strmh->hle != 0x0C) {
       strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
       printf("invalid packet: pts&&scr but header length is not 0x0C \n");
-      return;
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_INVALID_HEADER_LENGTH");
+      // return;
     } else if (!strmh->bmbfh.bfh_pts && !strmh->bmbfh.bfh_scr && strmh->hle != 0x02) {
       strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
       printf("invalid packet: no pts&&scr but header length is not 0x02 \n");
-      return;
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_INVALID_HEADER_LENGTH");
+      // return;
     } else if (strmh->bmbfh.bfh_pts && !strmh->bmbfh.bfh_scr && strmh->hle != 0x06) {
       strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
       printf("invalid packet: pts but header length is not 0x06 \n");
-      return;
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_INVALID_HEADER_LENGTH");
+      // return;
     } else if (!strmh->bmbfh.bfh_pts && strmh->bmbfh.bfh_scr && strmh->hle != 0x08) {
       strmh->frame.error_code = PAYLOAD_ERROR_INVALID_HEADER_LENGTH;
       printf("invalid packet: scr but header length is not 0x08 \n");
-      return;
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_INVALID_HEADER_LENGTH");
+      // return;
     }
 
-    // if (strmh->bmbfh.bfh_res){
-    //   strmh->frame.error_code = PAYLOAD_ERROR_RESERVED_BIT_SET;
-    //   printf("invalid packet: reserved bit set \n");
-    //   return;
-    // }
-    // // wonder why this is not working
-
+    if (!strmh->bmbfh.bfh_eof){
+      if (strmh->bmbfh.bfh_res){
+        strmh->frame.error_code = PAYLOAD_ERROR_RESERVED_BIT_SET;
+        printf("invalid packet: reserved bit set \n");
+        save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_RESERVED_BIT_SET");
+        // return;
+      }
+    }
+    
     if (strmh->bmbfh.bfh_err) {
       strmh->frame.error_code = PAYLOAD_ERROR_ERROR_BIT_SET;
-      printf("invalid packet: error bit set \n");
+      // printf("invalid packet: error bit set \n");
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_ERROR_BIT_SET");
       return;
     }
 
-    // if (!strmh->bmbfh.bfh_eoh){
+    // if (strmh->bmbfh.bfh_eoh){
     //   strmh->frame.error_code = PAYLOAD_ERROR_NO_ENDOFHEADER;
     //   printf("invalid packet: no eoh bit set \n");
     //   return;
     // }
-    // // wonder why this is not working
 
     
   // here is to end the frame
 
 
-    if (strmh->fid != (strmh->bfh & 1) && strmh->got_bytes != 0) {
+    if (strmh->fid != strmh->bmbfh.bfh_fid && strmh->got_bytes != 0) {
       /* The frame ID bit was flipped, but we have image data sitting
           around from prior transfers. This means the camera didn't send
           an EOF for the last transfer of the previous frame. */
       printf("swapping packets: frame ID bit flipped, but we have image data sitting around from prior transfers\n");
+      // strmh->frame.error_code = PAYLOAD_ERROR_FRAME_ID_FLIPPED;
       _uvc_swap_buffers(strmh);
     }
-
-    strmh->fid = strmh->bfh & 1;
+    //change previous fid
+    strmh->fid = strmh->bmbfh.bfh_fid;
 
     if (strmh->bmbfh.bfh_pts) {
       strmh->pts = DW_TO_INT(payload + variable_offset);
@@ -810,13 +857,13 @@ void _uvc_process_payload(uvc_stream_handle_t *strmh, uint8_t *payload, size_t p
       data_len = strmh->cur_ctrl.dwMaxVideoFrameSize - strmh->got_bytes; /* Avoid overflow. */
       strmh->frame.error_code = PAYLOAD_ERROR_OVERFLOW;
       printf("overflow: data_len = %zu\n", data_len);
+      save_payload_to_file(payload, strmh->hle, "PAYLOAD_ERROR_OVERFLOW");
     }
     memcpy(strmh->outbuf + strmh->got_bytes, payload + strmh->hle, data_len);
     strmh->got_bytes += data_len;
     if (strmh->bmbfh.bfh_eof || strmh->got_bytes == strmh->cur_ctrl.dwMaxVideoFrameSize) {
       /* The EOF bit is set, so publish the complete frame */
       _uvc_swap_buffers(strmh);
-
       // if the previous eof was there then the fid should be different
     }
   }

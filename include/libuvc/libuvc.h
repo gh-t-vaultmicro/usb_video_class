@@ -63,6 +63,7 @@ typedef enum payload_error{
   PAYLOAD_ERROR_WRONG_END_OF_PACKET = -6,
   PAYLOAD_ERROR_OVERFLOW = -7,
   PAYLOAD_ERROR_NO_ENDOFHEADER = -8,
+  PAYLOAD_ERROR_FRAME_ID_FLIPPED = -9,
   PAYLOAD_ERROR_UNKNOWN = -99
 } payload_error_t;
 
@@ -508,12 +509,11 @@ typedef struct uvc_frame {
   //Error type
   payload_error_t error_code;
   // Size of the frame
-
   // Packet count
 
   // Timestamp
   uvc_packet_time_stamp_t *time_stamp;
-  
+
 } uvc_frame_t;
 
 /** A callback function to handle incoming assembled UVC frames
